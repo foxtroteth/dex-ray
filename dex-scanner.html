@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEXRAY — Token Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #050508;
+  --surface: #0d0d14;
+  --surface2: #12121e;
+  --border: #1e1e30;
+  --border2: #2a2a40;
+  --green: #00ff88;
+  --red: #ff3355;
+  --blue: #00aaff;
+  --yellow: #ffd700;
+  --text: #e8e8f0;
+  --muted: #44445a;
+  --muted2: #666680;
+  --glow-green: rgba(0,255,136,0.15);
+  --glow-blue: rgba(0,170,255,0.15);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Scanline effect */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.03) 2px,
+    rgba(0,0,0,0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Animated bg */
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,255,136,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,255,136,0.02) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+  animation: gridMove 20s linear infinite;
+}
+
+@keyframes gridMove {
+  from { transform: translateY(0); }
+  to { transform: translateY(32px); }
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Header */
+header {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.logo {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(36px, 8vw, 64px);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: var(--green);
+  text-shadow: 0 0 30px rgba(0,255,136,0.5), 0 0 60px rgba(0,255,136,0.2);
+  line-height: 1;
+}
+
+.logo span {
+  color: var(--blue);
+  text-shadow: 0 0 30px rgba(0,170,255,0.5);
+}
+
+.tagline {
+  font-size: 11px;
+  color: var(--muted2);
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  margin-top: 8px;
+}
+
+/* Search */
+.search-box {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  padding: 20px;
+  margin-bottom: 32px;
+  position: relative;
+}
+
+.search-box::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--green), transparent);
+  opacity: 0.5;
+}
+
+.search-label {
+  font-size: 9px;
+  color: var(--muted2);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.search-row {
+  display: flex;
+  gap: 10px;
+}
+
+.search-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  padding: 12px 16px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  min-width: 0;
+}
+
+.search-input::placeholder { color: var(--muted); }
+
+.search-input:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 16px rgba(0,255,136,0.1);
+}
+
+.search-btn {
+  background: var(--green);
+  color: var(--bg);
+  border: none;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 12px 24px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.search-btn:hover {
+  background: #00cc6a;
+  box-shadow: 0 0 20px rgba(0,255,136,0.3);
+}
+
+.search-btn:disabled {
+  background: var(--muted);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Status */
+.status {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--muted2);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+}
+
+.status.loading {
+  color: var(--green);
+}
+
+.loader {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error-msg {
+  color: var(--red);
+  text-align: center;
+  padding: 32px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  border: 1px solid rgba(255,51,85,0.2);
+  background: rgba(255,51,85,0.05);
+}
+
+/* Results header */
+.results-count {
+  font-size: 10px;
+  color: var(--muted2);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+.results-count span { color: var(--green); }
+
+/* Token card */
+.token-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+  cursor: pointer;
+  animation: fadeIn 0.3s ease forwards;
+  opacity: 0;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.token-card:hover { border-color: var(--border2); }
+.token-card.expanded { border-color: var(--green); }
+
+.token-card-header {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.token-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.token-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.token-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.token-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.token-name {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.token-symbol {
+  font-size: 11px;
+  color: var(--muted2);
+  letter-spacing: 0.1em;
+}
+
+.chain-badge {
+  font-size: 9px;
+  padding: 2px 8px;
+  border: 1px solid var(--border2);
+  color: var(--blue);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: rgba(0,170,255,0.05);
+}
+
+.dex-badge {
+  font-size: 9px;
+  padding: 2px 8px;
+  border: 1px solid var(--border2);
+  color: var(--muted2);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.token-meta {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-price-col {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.token-price {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.price-change {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.price-change.up { color: var(--green); }
+.price-change.down { color: var(--red); }
+
+/* Expanded details */
+.token-details {
+  display: none;
+  padding: 0 20px 20px;
+  border-top: 1px solid var(--border);
+  margin-top: 0;
+}
+
+.token-card.expanded .token-details { display: block; }
+
+.token-details-top {
+  padding-top: 16px;
+  margin-bottom: 16px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.stat-box {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 12px;
+}
+
+.stat-box-label {
+  font-size: 9px;
+  color: var(--muted2);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.stat-box-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.stat-box-value.green { color: var(--green); }
+.stat-box-value.red { color: var(--red); }
+.stat-box-value.yellow { color: var(--yellow); }
+.stat-box-value.blue { color: var(--blue); }
+
+/* Price changes row */
+.changes-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.change-box {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 10px;
+  text-align: center;
+}
+
+.change-box-label {
+  font-size: 9px;
+  color: var(--muted2);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.change-box-val {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Contract address */
+.contract-row {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.contract-label {
+  font-size: 9px;
+  color: var(--muted2);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.contract-addr {
+  font-size: 11px;
+  color: var(--muted2);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--muted2);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  padding: 4px 10px;
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.copy-btn:hover { border-color: var(--green); color: var(--green); }
+
+/* Links */
+.action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-link {
+  font-size: 10px;
+  padding: 8px 16px;
+  border: 1px solid var(--border2);
+  color: var(--muted2);
+  text-decoration: none;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: all 0.15s;
+  display: inline-block;
+}
+
+.action-link:hover { border-color: var(--green); color: var(--green); }
+.action-link.primary { border-color: var(--green); color: var(--green); background: rgba(0,255,136,0.05); }
+
+/* Txn counts */
+.txn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.txn-box {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.txn-label { font-size: 10px; color: var(--muted2); letter-spacing: 0.1em; }
+.txn-val { font-size: 13px; font-weight: 600; }
+.txn-val.buy { color: var(--green); }
+.txn-val.sell { color: var(--red); }
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+
+<div class="container">
+  <header>
+    <div class="logo">DEX<span>RAY</span></div>
+    <div class="tagline">Real-time Token Scanner · Powered by DexScreener</div>
+  </header>
+
+  <div class="search-box">
+    <div class="search-label">Search by token name or contract address</div>
+    <div class="search-row">
+      <input
+        class="search-input"
+        id="searchInput"
+        type="text"
+        placeholder="e.g. PEPE, BONK, or 0x1234...abcd"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+      />
+      <button class="search-btn" id="searchBtn" onclick="search()">SCAN</button>
+    </div>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script>
+  const input = document.getElementById('searchInput');
+  const btn = document.getElementById('searchBtn');
+  const results = document.getElementById('results');
+
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+
+  function isAddress(q) {
+    return /^0x[a-fA-F0-9]{40}$/.test(q) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(q);
+  }
+
+  async function search() {
+    const q = input.value.trim();
+    if (!q) return;
+
+    btn.disabled = true;
+    btn.textContent = 'SCANNING...';
+    results.innerHTML = `<div class="status loading"><div class="loader"></div><br>SCANNING CHAIN DATA...</div>`;
+
+    try {
+      let pairs = [];
+
+      if (isAddress(q)) {
+        // Search by contract address
+        const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${q}`);
+        const data = await res.json();
+        pairs = data.pairs || [];
+      } else {
+        // Search by name
+        const res = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        pairs = data.pairs || [];
+      }
+
+      if (!pairs.length) {
+        results.innerHTML = `<div class="error-msg">// NO PAIRS FOUND FOR "${q}"<br>Try a different token name or contract address</div>`;
+        return;
+      }
+
+      // Deduplicate by base token address, keep highest liquidity
+      const seen = new Map();
+      pairs.forEach(p => {
+        const key = (p.baseToken?.address || '') + (p.chainId || '');
+        if (!seen.has(key) || (p.liquidity?.usd || 0) > (seen.get(key).liquidity?.usd || 0)) {
+          seen.set(key, p);
+        }
+      });
+
+      const unique = Array.from(seen.values())
+        .sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))
+        .slice(0, 20);
+
+      results.innerHTML = `<div class="results-count">// <span>${unique.length}</span> PAIRS FOUND</div>`;
+      unique.forEach((pair, i) => renderCard(pair, i));
+
+    } catch(e) {
+      results.innerHTML = `<div class="error-msg">// CONNECTION ERROR<br>Check your internet and try again</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'SCAN';
+    }
+  }
+
+  function fmt(n, decimals = 2) {
+    if (n === undefined || n === null) return '—';
+    if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+    if (n >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+    if (n >= 1e3) return '$' + (n/1e3).toFixed(2) + 'K';
+    return '$' + n.toFixed(decimals);
+  }
+
+  function fmtPrice(p) {
+    if (!p) return '—';
+    const n = parseFloat(p);
+    if (n >= 1) return '$' + n.toFixed(4);
+    if (n >= 0.01) return '$' + n.toFixed(6);
+    if (n >= 0.000001) return '$' + n.toFixed(8);
+    return '$' + n.toExponential(4);
+  }
+
+  function fmtChange(v) {
+    if (v === undefined || v === null) return { text: '—', cls: '' };
+    const n = parseFloat(v);
+    return {
+      text: (n >= 0 ? '+' : '') + n.toFixed(2) + '%',
+      cls: n >= 0 ? 'up' : 'down'
+    };
+  }
+
+  function fmtNum(n) {
+    if (!n) return '—';
+    if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+    return n.toString();
+  }
+
+  function renderCard(pair, idx) {
+    const id = 'card-' + idx;
+    const change24 = fmtChange(pair.priceChange?.h24);
+    const change1h = fmtChange(pair.priceChange?.h1);
+    const change6h = fmtChange(pair.priceChange?.h6);
+    const change5m = fmtChange(pair.priceChange?.m5);
+
+    const card = document.createElement('div');
+    card.className = 'token-card';
+    card.id = id;
+    card.style.animationDelay = (idx * 0.05) + 's';
+
+    const symbol = pair.baseToken?.symbol || '?';
+    const name = pair.baseToken?.name || symbol;
+    const addr = pair.baseToken?.address || '';
+    const chain = pair.chainId || '';
+    const dex = pair.dexId || '';
+    const url = pair.url || '#';
+    const price = fmtPrice(pair.priceUsd);
+    const liq = fmt(pair.liquidity?.usd);
+    const mcap = fmt(pair.marketCap || pair.fdv);
+    const vol24 = fmt(pair.volume?.h24);
+    const vol1h = fmt(pair.volume?.h1);
+    const buys = pair.txns?.h24?.buys;
+    const sells = pair.txns?.h24?.sells;
+    const iconUrl = pair.info?.imageUrl || '';
+
+    card.innerHTML = `
+      <div class="token-card-header" onclick="toggleCard('${id}')">
+        <div class="token-icon">
+          ${iconUrl
+            ? `<img src="${iconUrl}" alt="${symbol}" onerror="this.parentNode.textContent='${symbol[0]}'">`
+            : symbol[0]
+          }
+        </div>
+        <div class="token-main">
+          <div class="token-name-row">
+            <span class="token-name">${symbol}</span>
+            <span class="token-symbol">${name}</span>
+            <span class="chain-badge">${chain}</span>
+            <span class="dex-badge">${dex}</span>
+          </div>
+          <div class="token-meta">${addr}</div>
+        </div>
+        <div class="token-price-col">
+          <div class="token-price">${price}</div>
+          <div class="price-change ${change24.cls}">${change24.text} 24h</div>
+        </div>
+      </div>
+
+      <div class="token-details">
+        <div class="changes-row">
+          <div class="change-box">
+            <div class="change-box-label">5m</div>
+            <div class="change-box-val ${change5m.cls === 'up' ? 'green' : change5m.cls === 'down' ? 'red' : ''}" style="color:${change5m.cls==='up'?'var(--green)':change5m.cls==='down'?'var(--red)':'var(--muted2)'}">${change5m.text}</div>
+          </div>
+          <div class="change-box">
+            <div class="change-box-label">1h</div>
+            <div class="change-box-val" style="color:${change1h.cls==='up'?'var(--green)':change1h.cls==='down'?'var(--red)':'var(--muted2)'}">${change1h.text}</div>
+          </div>
+          <div class="change-box">
+            <div class="change-box-label">6h</div>
+            <div class="change-box-val" style="color:${change6h.cls==='up'?'var(--green)':change6h.cls==='down'?'var(--red)':'var(--muted2)'}">${change6h.text}</div>
+          </div>
+          <div class="change-box">
+            <div class="change-box-label">24h</div>
+            <div class="change-box-val" style="color:${change24.cls==='up'?'var(--green)':change24.cls==='down'?'var(--red)':'var(--muted2)'}">${change24.text}</div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-box-label">Price USD</div>
+            <div class="stat-box-value blue">${price}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-box-label">Market Cap</div>
+            <div class="stat-box-value yellow">${mcap}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-box-label">Liquidity</div>
+            <div class="stat-box-value green">${liq}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-box-label">Vol 24h</div>
+            <div class="stat-box-value">${vol24}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-box-label">Vol 1h</div>
+            <div class="stat-box-value">${vol1h}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-box-label">Txns 24h</div>
+            <div class="stat-box-value">${buys !== undefined ? (buys + sells) : '—'}</div>
+          </div>
+        </div>
+
+        ${buys !== undefined ? `
+        <div class="txn-row">
+          <div class="txn-box">
+            <span class="txn-label">// BUYS 24H</span>
+            <span class="txn-val buy">▲ ${fmtNum(buys)}</span>
+          </div>
+          <div class="txn-box">
+            <span class="txn-label">// SELLS 24H</span>
+            <span class="txn-val sell">▼ ${fmtNum(sells)}</span>
+          </div>
+        </div>` : ''}
+
+        <div class="contract-row">
+          <span class="contract-label">CA</span>
+          <span class="contract-addr">${addr}</span>
+          <button class="copy-btn" onclick="copyAddr('${addr}', this)">COPY</button>
+        </div>
+
+        <div class="action-row">
+          <a class="action-link primary" href="${url}" target="_blank">VIEW ON DEXSCREENER ↗</a>
+          <a class="action-link" href="https://dexscreener.com/tokens/${addr}" target="_blank">ALL PAIRS ↗</a>
+        </div>
+      </div>
+    `;
+
+    results.appendChild(card);
+  }
+
+  function toggleCard(id) {
+    const card = document.getElementById(id);
+    card.classList.toggle('expanded');
+  }
+
+  function copyAddr(addr, btn) {
+    navigator.clipboard.writeText(addr).then(() => {
+      btn.textContent = 'COPIED!';
+      btn.style.color = 'var(--green)';
+      btn.style.borderColor = 'var(--green)';
+      setTimeout(() => {
+        btn.textContent = 'COPY';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }, 2000);
+    });
+  }
+
+  // Pre-fill example
+  input.focus();
+</script>
+</body>
+</html>
